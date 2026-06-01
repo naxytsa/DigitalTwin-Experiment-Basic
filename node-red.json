@@ -1,0 +1,614 @@
+[
+    {
+        "id": "8027da45117cac5a",
+        "type": "tab",
+        "label": "Flow 1",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "7ae6e04cae788951",
+        "type": "mqtt in",
+        "z": "8027da45117cac5a",
+        "name": "",
+        "topic": "kamar1/data",
+        "qos": "2",
+        "datatype": "json",
+        "broker": "1c8e6a2153f4b6d0",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 90,
+        "y": 80,
+        "wires": [
+            [
+                "5603a285d3ae5248"
+            ]
+        ]
+    },
+    {
+        "id": "5603a285d3ae5248",
+        "type": "function",
+        "z": "8027da45117cac5a",
+        "name": "Convert Sensor ",
+        "func": "// Parse incoming MQTT sensor data from ESP32\nconst payload = msg.payload;\n\n// Pastikan nilai numerik (hindari string)\nconst temperature = parseFloat(payload.temperature) || 0.0;\nconst humidity = parseFloat(payload.humidity) || 0.0;\nconst lux = parseFloat(payload.lux) || 0;\n\n// --- Untuk InfluxDB (output ke-2) ---\n// Format yang sesuai dengan node-red-contrib-influxdb\nconst msgInflux = {\n    payload: {\n        measurement: \"smarthome\",          // Nama measurement\n        tags: {\n            device: \"esp32s3\"           // Tag untuk identifikasi\n        },\n        fields: {\n            temperature: temperature,\n            humidity: humidity,\n            lux: lux\n        }\n    }\n};\n\n// --- Untuk WebSocket / Frontend (output ke-1) ---\nconst wsMsg = {\n    payload: {\n        temperature: temperature,\n        humidity: humidity,\n        lux: lux,\n        limitSwitch: payload.limitSwitch || false\n    }\n};\n\n// Kembalikan dua output: [wsMsg, msgInflux]\nreturn [wsMsg, msgInflux];",
+        "outputs": 2,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 280,
+        "y": 80,
+        "wires": [
+            [
+                "c4a8ad397336201a"
+            ],
+            [
+                "c6f2d2d1778519ea"
+            ]
+        ]
+    },
+    {
+        "id": "c6f2d2d1778519ea",
+        "type": "influxdb out",
+        "z": "8027da45117cac5a",
+        "influxdb": "f45ece908ec17f01",
+        "name": "",
+        "measurement": "smarthome",
+        "precision": "",
+        "retentionPolicy": "",
+        "database": "database",
+        "precisionV18FluxV20": "ms",
+        "retentionPolicyV18Flux": "",
+        "org": "Astra",
+        "bucket": "Monitoring",
+        "x": 520,
+        "y": 120,
+        "wires": []
+    },
+    {
+        "id": "c4a8ad397336201a",
+        "type": "websocket out",
+        "z": "8027da45117cac5a",
+        "name": "websocket to frontend",
+        "server": "",
+        "client": "fc50fefde774d204",
+        "x": 540,
+        "y": 60,
+        "wires": []
+    },
+    {
+        "id": "006439a9cbedc078",
+        "type": "websocket in",
+        "z": "8027da45117cac5a",
+        "name": "output controll",
+        "server": "",
+        "client": "fc50fefde774d204",
+        "x": 90,
+        "y": 300,
+        "wires": [
+            [
+                "f810e3b439c1f863",
+                "b550d7e5a6152f05",
+                "3ee66c3509afda5d"
+            ]
+        ]
+    },
+    {
+        "id": "f810e3b439c1f863",
+        "type": "function",
+        "z": "8027da45117cac5a",
+        "name": "Convert Controll AC",
+        "func": "// Handle AC control from WebSocket\nconst data = msg.payload;\n\nif (!data.device || data.device !== 'ac') {\n    return [];\n}\n\nconst room = data.room || 'master';\nconst action = data.action || 'off';\nconst temp = data.temp || 24;\nconst mode = data.mode || 'cool';\nconst fan = data.fan || 'auto';\n\nconst payload = {\n    power: action === 'on' ? 'on' : 'off',\n    temp: temp,\n    mode: mode,\n    fan: fan\n};\n\nconst msg1 = { payload: JSON.stringify(payload) };  // servant_bedroom\nconst msg2 = { payload: JSON.stringify(payload) };  // kid_bedroom\nconst msg3 = { payload: JSON.stringify(payload) };  // master_bedroom\n\n// Route based on room parameter\nif (room.toLowerCase().includes('servant')) {\n    return [msg1, null, null];\n} else if (room.toLowerCase().includes('kid')) {\n    return [null, msg2, null];\n} else {\n    return [null, null, msg3];\n}\n\n// Or broadcast to all if room not specified clearly\nreturn [msg1, msg2, msg3];",
+        "outputs": 3,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 400,
+        "y": 260,
+        "wires": [
+            [
+                "c282830ba482164e"
+            ],
+            [
+                "a2dc06be8e29d624"
+            ],
+            [
+                "a2dbcb8fadb97c76"
+            ]
+        ]
+    },
+    {
+        "id": "a2dbcb8fadb97c76",
+        "type": "mqtt out",
+        "z": "8027da45117cac5a",
+        "name": "AC ruang tidur (master)",
+        "topic": "control/ac/master_bedroom",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "1c8e6a2153f4b6d0",
+        "x": 870,
+        "y": 260,
+        "wires": []
+    },
+    {
+        "id": "b0ae02c3173eec56",
+        "type": "mqtt out",
+        "z": "8027da45117cac5a",
+        "name": "pintu ruang tamu",
+        "topic": "control/door/livingroom",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "1c8e6a2153f4b6d0",
+        "x": 870,
+        "y": 320,
+        "wires": []
+    },
+    {
+        "id": "5612e5d55e00a577",
+        "type": "mqtt out",
+        "z": "8027da45117cac5a",
+        "name": "pintu kamar (master)",
+        "topic": "control/door/master_bedroom",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "1c8e6a2153f4b6d0",
+        "x": 880,
+        "y": 360,
+        "wires": []
+    },
+    {
+        "id": "da6bc6614b2ba2a2",
+        "type": "mqtt out",
+        "z": "8027da45117cac5a",
+        "name": "pintu kamar (anak)",
+        "topic": "control/door/kid_bedroom",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "1c8e6a2153f4b6d0",
+        "x": 870,
+        "y": 400,
+        "wires": []
+    },
+    {
+        "id": "669ee29be8c2f348",
+        "type": "mqtt out",
+        "z": "8027da45117cac5a",
+        "name": "pintu kamar (pembantu)",
+        "topic": "control/door/servant_bedroom",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "1c8e6a2153f4b6d0",
+        "x": 890,
+        "y": 440,
+        "wires": []
+    },
+    {
+        "id": "843dc322354eb765",
+        "type": "mqtt out",
+        "z": "8027da45117cac5a",
+        "name": "pintu luar",
+        "topic": "control/door/terrace",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "1c8e6a2153f4b6d0",
+        "x": 840,
+        "y": 480,
+        "wires": []
+    },
+    {
+        "id": "d96751d38b62dd2f",
+        "type": "mqtt out",
+        "z": "8027da45117cac5a",
+        "name": "lampu kamar (master)",
+        "topic": "control/lamp/master_bedroom",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "1c8e6a2153f4b6d0",
+        "x": 560,
+        "y": 520,
+        "wires": []
+    },
+    {
+        "id": "7f0a9daf1f299740",
+        "type": "mqtt out",
+        "z": "8027da45117cac5a",
+        "name": "lampu kamar (anak)",
+        "topic": "control/lamp/kid_bedroom",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "1c8e6a2153f4b6d0",
+        "x": 560,
+        "y": 560,
+        "wires": []
+    },
+    {
+        "id": "e751583e11c5b90c",
+        "type": "mqtt out",
+        "z": "8027da45117cac5a",
+        "name": "lampu kamar (pembantu)",
+        "topic": "control/lamp/servant_bedroom",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "1c8e6a2153f4b6d0",
+        "x": 570,
+        "y": 600,
+        "wires": []
+    },
+    {
+        "id": "11344a27a495d1ad",
+        "type": "mqtt out",
+        "z": "8027da45117cac5a",
+        "name": "lampu ruang tamu",
+        "topic": "control/lamp/living",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "1c8e6a2153f4b6d0",
+        "x": 550,
+        "y": 640,
+        "wires": []
+    },
+    {
+        "id": "a2dc06be8e29d624",
+        "type": "mqtt out",
+        "z": "8027da45117cac5a",
+        "name": "AC ruang tidur (anak)",
+        "topic": "control/ac/kid_bedroom",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "1c8e6a2153f4b6d0",
+        "x": 860,
+        "y": 220,
+        "wires": []
+    },
+    {
+        "id": "c282830ba482164e",
+        "type": "mqtt out",
+        "z": "8027da45117cac5a",
+        "name": "AC ruang tidur (pembantu)",
+        "topic": "control/ac/servant_bedroom",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "1c8e6a2153f4b6d0",
+        "x": 880,
+        "y": 180,
+        "wires": []
+    },
+    {
+        "id": "b550d7e5a6152f05",
+        "type": "function",
+        "z": "8027da45117cac5a",
+        "name": "Convert Controll Pintu",
+        "func": "// Handle door/relay control from WebSocket\nconst data = msg.payload;\n\nif (!data.device || (data.device !== 'door' && data.device !== 'relay')) {\n    return [null, null, null, null, null, null, null, null];\n}\n\nconst room = data.room || 'livingroom';\nconst action = data.action || 'close';\n\n// Convert action to relay state\nconst relayPayload = action === 'open' ? 'on' : 'off';\n\n// Create message objects for each door output\nconst messages = [\n    null, // 0: livingroom\n    null, // 1: master_bedroom\n    null, // 2: kid_bedroom\n    null, // 3: servant_bedroom\n    null, // 4: terrace (back)\n    null, // 5: back\n    null, // 6: toilet1\n    null  // 7: toilet2\n];\n\nconst msg_payload = { payload: relayPayload };\n\n// Map room to output index\nif (room.toLowerCase().includes('living')) {\n    messages[0] = msg_payload;\n} else if (room.toLowerCase().includes('master')) {\n    messages[1] = msg_payload;\n} else if (room.toLowerCase().includes('kid')) {\n    messages[2] = msg_payload;\n} else if (room.toLowerCase().includes('servant')) {\n    messages[3] = msg_payload;\n} else if (room.toLowerCase().includes('terrace')) {\n    messages[4] = msg_payload;\n} else if (room.toLowerCase().includes('back')) {\n    messages[5] = msg_payload;\n} else if (room.toLowerCase().includes('toilet1')) {\n    messages[6] = msg_payload;\n} else if (room.toLowerCase().includes('toilet2')) {\n    messages[7] = msg_payload;\n}\n\nreturn messages;",
+        "outputs": 8,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 540,
+        "y": 380,
+        "wires": [
+            [
+                "b0ae02c3173eec56"
+            ],
+            [
+                "5612e5d55e00a577"
+            ],
+            [
+                "da6bc6614b2ba2a2"
+            ],
+            [
+                "669ee29be8c2f348"
+            ],
+            [
+                "843dc322354eb765"
+            ],
+            [
+                "ac5440d1a2907cba"
+            ],
+            [
+                "aa0077a925600b0e"
+            ],
+            [
+                "4e185c926b4f089d"
+            ]
+        ]
+    },
+    {
+        "id": "3ee66c3509afda5d",
+        "type": "function",
+        "z": "8027da45117cac5a",
+        "name": "Convert Controll Lamp",
+        "func": "// Handle lamp and RGB control from WebSocket\nconst data = msg.payload;\n\nif (!data.device || (data.device !== 'lamp' && data.device !== 'rgb')) {\n    return [null, null, null, null, null, null, null, null];\n}\n\nconst room = data.room || 'livingroom';\n\n// Create message objects for each lamp output\nconst messages = [\n    null, // 0: master_bedroom\n    null, // 1: kid_bedroom\n    null, // 2: servant_bedroom\n    null, // 3: livingroom\n    null, // 4: kitchen\n    null, // 5: terrace\n    null, // 6: toilet1\n    null  // 7: toilet2\n];\n\nlet msg_payload;\n\nif (data.device === 'rgb') {\n    // RGB color control\n    msg_payload = {\n        payload: JSON.stringify({\n            r: data.r || 0,\n            g: data.g || 0,\n            b: data.b || 0\n        })\n    };\n} else {\n    // Simple on/off lamp control\n    const state = data.state === 'on' ? 'on' : 'off';\n    const brightness = data.brightness !== undefined ? data.brightness : 100;\n    \n    msg_payload = {\n        payload: JSON.stringify({\n            state: state,\n            brightness: brightness\n        })\n    };\n}\n\n// Map room to output index\nif (room.toLowerCase().includes('master')) {\n    messages[0] = msg_payload;\n} else if (room.toLowerCase().includes('kid')) {\n    messages[1] = msg_payload;\n} else if (room.toLowerCase().includes('servant')) {\n    messages[2] = msg_payload;\n} else if (room.toLowerCase().includes('living')) {\n    messages[3] = msg_payload;\n} else if (room.toLowerCase().includes('kitchen')) {\n    messages[4] = msg_payload;\n} else if (room.toLowerCase().includes('terrace')) {\n    messages[5] = msg_payload;\n} else if (room.toLowerCase().includes('toilet1')) {\n    messages[6] = msg_payload;\n} else if (room.toLowerCase().includes('toilet2')) {\n    messages[7] = msg_payload;\n}\n\nreturn messages;",
+        "outputs": 8,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 260,
+        "y": 660,
+        "wires": [
+            [
+                "d96751d38b62dd2f"
+            ],
+            [
+                "7f0a9daf1f299740"
+            ],
+            [
+                "e751583e11c5b90c"
+            ],
+            [
+                "11344a27a495d1ad"
+            ],
+            [
+                "2d7969e7ddba0044"
+            ],
+            [
+                "b693c0bb62d2e4a6"
+            ],
+            [
+                "e5fbab05f7269780"
+            ],
+            [
+                "f5ca72c3b1a5a009"
+            ]
+        ]
+    },
+    {
+        "id": "2d7969e7ddba0044",
+        "type": "mqtt out",
+        "z": "8027da45117cac5a",
+        "name": "lampu ruang dapur",
+        "topic": "control/lamp/kitchen",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "1c8e6a2153f4b6d0",
+        "x": 550,
+        "y": 680,
+        "wires": []
+    },
+    {
+        "id": "b693c0bb62d2e4a6",
+        "type": "mqtt out",
+        "z": "8027da45117cac5a",
+        "name": "lampu luar",
+        "topic": "control/lamp/terrace",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "1c8e6a2153f4b6d0",
+        "x": 530,
+        "y": 720,
+        "wires": []
+    },
+    {
+        "id": "ac5440d1a2907cba",
+        "type": "mqtt out",
+        "z": "8027da45117cac5a",
+        "name": "pintu belakang",
+        "topic": "control/door/back",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "1c8e6a2153f4b6d0",
+        "x": 860,
+        "y": 520,
+        "wires": []
+    },
+    {
+        "id": "aa0077a925600b0e",
+        "type": "mqtt out",
+        "z": "8027da45117cac5a",
+        "name": "pintu toilet 1",
+        "topic": "control/door/toilet1",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "1c8e6a2153f4b6d0",
+        "x": 850,
+        "y": 560,
+        "wires": []
+    },
+    {
+        "id": "4e185c926b4f089d",
+        "type": "mqtt out",
+        "z": "8027da45117cac5a",
+        "name": "pintu toilet 2",
+        "topic": "control/door/toilet2",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "1c8e6a2153f4b6d0",
+        "x": 850,
+        "y": 600,
+        "wires": []
+    },
+    {
+        "id": "e5fbab05f7269780",
+        "type": "mqtt out",
+        "z": "8027da45117cac5a",
+        "name": "lampu toilet 1",
+        "topic": "control/lamp/toilet1",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "1c8e6a2153f4b6d0",
+        "x": 530,
+        "y": 760,
+        "wires": []
+    },
+    {
+        "id": "f5ca72c3b1a5a009",
+        "type": "mqtt out",
+        "z": "8027da45117cac5a",
+        "name": "lampu toilet 2",
+        "topic": "control/lamp/toilet2",
+        "qos": "",
+        "retain": "",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "1c8e6a2153f4b6d0",
+        "x": 530,
+        "y": 800,
+        "wires": []
+    },
+    {
+        "id": "1c8e6a2153f4b6d0",
+        "type": "mqtt-broker",
+        "name": "",
+        "broker": "broker.mqtt-dashboard.com",
+        "port": 1883,
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": 4,
+        "keepalive": 60,
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "birthTopic": "",
+        "birthQos": "0",
+        "birthRetain": "false",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closeRetain": "false",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willRetain": "false",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    },
+    {
+        "id": "f45ece908ec17f01",
+        "type": "influxdb",
+        "hostname": "127.0.0.1",
+        "port": 8086,
+        "protocol": "http",
+        "database": "database",
+        "name": "Input",
+        "usetls": false,
+        "tls": "",
+        "influxdbVersion": "2.0",
+        "url": "http://localhost:8086",
+        "timeout": 10,
+        "rejectUnauthorized": true
+    },
+    {
+        "id": "fc50fefde774d204",
+        "type": "websocket-client",
+        "path": "ws://localhost:1880/ws/digital-twin",
+        "tls": "",
+        "wholemsg": "false",
+        "hb": "0",
+        "subprotocol": "",
+        "headers": []
+    },
+    {
+        "id": "3935d591b97c7fa3",
+        "type": "global-config",
+        "env": [],
+        "modules": {
+            "node-red-contrib-influxdb": "0.7.0"
+        }
+    }
+]

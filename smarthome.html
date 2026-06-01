@@ -1,0 +1,519 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart House - Digital Twin</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Segoe UI', sans-serif;
+            background-color: #111;
+            font-size: 14px;
+        }
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            background: rgba(0,0,0,0.7);
+            padding: 12px 20px;
+            border-radius: 8px;
+            pointer-events: auto;
+            z-index: 15;
+            border-left: 4px solid #00a8ff;
+            font-size: 16px;
+            user-select: none;
+        }
+        #info h2 {
+            font-size: 24px;
+            margin: 0 0 8px 0;
+        }
+        #status {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            color: #aaa;
+            font-family: monospace;
+            background: rgba(20,20,30,0.8);
+            padding: 6px 15px;
+            border-radius: 20px;
+            font-size: 20px;
+            z-index: 10;
+        }
+        #iot-panel {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: white;
+            background: rgba(10,20,40,0.95);
+            padding: 15px 20px;
+            border-radius: 10px;
+            border: 1px solid #2a4a6a;
+            z-index: 20;
+            min-width: 200px;
+            backdrop-filter: blur(4px);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.5);
+            pointer-events: none;
+        }
+        #iot-panel h3 {
+            margin: 0 0 12px 0;
+            color: #60d5ff;
+            font-weight: 400;
+            border-bottom: 1px solid #2a4a6a;
+            padding-bottom: 6px;
+            font-size: 18px;
+        }
+        .device-row {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 20px;
+        }
+        .device-name { color: #b0e0ff; }
+        .device-status {
+            font-weight: bold;
+            padding: 2px 8px;
+            border-radius: 12px;
+            background: rgba(255,255,255,0.1);
+        }
+        .status-on { color: #90e890; }
+        .status-off { color: #ff9090; }
+        .control-hint {
+            position: absolute;
+            bottom: 20px;
+            right: 20px;
+            color: #ccc;
+            background: rgba(0,0,0,0.5);
+            padding: 10px 18px;
+            border-radius: 30px;
+            font-size: 16px;
+            z-index: 10;
+            backdrop-filter: blur(5px);
+            pointer-events: none;
+        }
+        #ac-temp-slider {
+            cursor: pointer;
+            width: 100%;
+            margin-top: 4px;
+            pointer-events: auto;
+        }
+    </style>
+</head>
+<body>
+    <div id="info">
+        <h2>🏠 Dashboard</h2>
+        <div id="sensor-data" style="margin-top: 12px; font-size: 14px; color: #89f; line-height: 1.8;">
+            <div>🌡️ Suhu: <span id="temp-value">--</span>°C</div>
+            <div>💧 Kelembaban: <span id="humidity-value">--</span>%</div>
+            <div>☀️ Cahaya: <span id="lux-value">--</span> lux</div>
+            <div style="margin-top:12px; padding-top:12px; border-top:1px solid #445;">
+                <div>❄️ AC Suhu: <span id="ac-temp-display" style="font-weight:bold; color:#6f9;">24°C</span></div>
+                <input id="ac-temp-slider" type="range" min="16" max="30" value="24">
+            </div>
+        </div>
+    </div>
+    <div id="status">Memuat model...</div>
+    <div id="connection-status" style="position:absolute; bottom:20px; right:20px; color:#ccc; background:rgba(0,0,0,0.7); padding:8px 16px; border-radius:20px; font-size:14px; z-index:10; display:flex; align-items:center; gap:8px;">
+        <span id="ws-indicator" style="width:10px; height:10px; border-radius:50%; background:#ff6b6b; display:inline-block;"></span>
+        <span id="ws-text">Koneksi WebSocket...</span>
+    </div>
+    <div id="iot-panel">
+        <h3>⚡ PERANGKAT IoT</h3>
+        <div id="device-list" style="font-size:14px;"></div>
+        <div style="margin-top:10px; font-size:13px; color:#cfefff;">
+            <div>Gate status: <span id="gate-status">--</span>
+                <button id="toggle-gate" style="margin-left:8px; padding:6px 8px; border-radius:6px; border:0; background:#0078d4; color:#fff; cursor:pointer; pointer-events:auto;">Toggle Gate</button>
+            </div>
+        </div>
+    </div>
+    <div class="control-hint">🖱️ Klik lampu / AC / kamera · Drag rotasi · Scroll zoom</div>
+
+    <!-- Camera modal -->
+    <div id="cameraModal" style="display:none; position:fixed; inset:0; align-items:center; justify-content:center; background:rgba(0,0,0,0.85); z-index:9999;">
+        <div style="position:relative; max-width:90%; max-height:90%; margin:auto;">
+            <button id="closeCam" style="position:absolute; right:-8px; top:-8px; background:#222; color:#fff; border:0; border-radius:20px; padding:8px 12px; cursor:pointer; z-index:2;">Close</button>
+            <img id="camImg" src="" alt="Camera stream" style="display:block; max-width:100%; height:auto; border-radius:6px; box-shadow:0 6px 30px rgba(0,0,0,0.6);">
+        </div>
+    </div>
+
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.128.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.128.0/examples/jsm/"
+            }
+        }
+    </script>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+
+        // --- WebSocket ---
+        let ws = null;
+        const NODE_RED_WS = 'ws://localhost:1880/ws/digital-twin';
+        const sensorData = { temperature: null, humidity: null, lux: null, relay: null, limitSwitch: null };
+
+        function connectWebSocket() {
+            ws = new WebSocket(NODE_RED_WS);
+            ws.onopen = () => {
+                console.log('✅ WebSocket terhubung');
+                document.getElementById('ws-indicator').style.background = '#90e890';
+                document.getElementById('ws-text').textContent = 'WebSocket Terhubung';
+            };
+            ws.onmessage = (event) => {
+
+                console.log('📨 [RAW] Data mentah dari WebSocket:', event.data);
+
+                try {
+                    const data = JSON.parse(event.data);
+                    console.log('📊 Data diterima:', data);
+
+                    // Update sensor display
+                    if (data.temperature !== undefined) {
+                        sensorData.temperature = data.temperature;
+                        document.getElementById('temp-value').textContent = (+data.temperature).toFixed(1);
+                    }
+                    if (data.humidity !== undefined) {
+                        sensorData.humidity = data.humidity;
+                        document.getElementById('humidity-value').textContent = (+data.humidity).toFixed(0);
+                    }
+                    if (data.lux !== undefined) {
+                        sensorData.lux = data.lux;
+                        document.getElementById('lux-value').textContent = (+data.lux).toFixed(0);
+                    }
+                    if (data.limitSwitch !== undefined) sensorData.limitSwitch = data.limitSwitch;
+                    if (data.relay !== undefined) sensorData.relay = data.relay;
+
+                    // Gate status
+                    const gateClosed = (sensorData.relay !== null && sensorData.relay !== undefined) 
+                                        ? sensorData.relay 
+                                        : sensorData.limitSwitch;
+                    document.getElementById('gate-status').textContent = gateClosed ? 'Tertutup' : 'Terbuka';
+
+                    // Device state update from feedback
+                    if (data.device && data.room && data.state !== undefined) {
+                        handleDeviceStatusUpdate(data.device, data.room, data.state);
+                    }
+
+                    updateIoTPanel();
+                } catch (e) {
+                    console.error('⚠️ Gagal parse:', e, event.data);
+                }
+            };
+            ws.onerror = (err) => {
+                console.error('❌ WebSocket error:', err);
+                document.getElementById('ws-indicator').style.background = '#ff9090';
+                document.getElementById('ws-text').textContent = 'WebSocket Error';
+            };
+            ws.onclose = () => {
+                console.warn('⚠️ WebSocket ditutup, reconnect...');
+                document.getElementById('ws-indicator').style.background = '#ff9090';
+                document.getElementById('ws-text').textContent = 'Disconnected';
+                setTimeout(connectWebSocket, 3000);
+            };
+        }
+
+        function sendCommand(device, room, params = {}) {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                ws.send(JSON.stringify({ device, room, ...params }));
+                console.log('📤 Command sent:', { device, room, ...params });
+            } else {
+                console.warn('❌ WebSocket tidak tersedia');
+            }
+        }
+
+        // --- Three.js Setup ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x111122);
+        scene.fog = new THREE.FogExp2(0x111122, 0.008);
+        const camera = new THREE.PerspectiveCamera(45, innerWidth/innerHeight, 0.1, 1000);
+        camera.position.set(8, 6, 12);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(innerWidth, innerHeight);
+        renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.autoRotate = true;
+        controls.autoRotateSpeed = 0.8;
+        controls.enableZoom = true;
+        controls.target.set(0, 1.5, 0);
+        controls.maxPolarAngle = Math.PI / 2;
+
+        // Lights
+        scene.add(new THREE.AmbientLight(0x404060, 0.45));
+        const sun = new THREE.DirectionalLight(0xfff5d1, 1.2);
+        sun.position.set(10, 20, 5);
+        sun.castShadow = sun.receiveShadow = true;
+        sun.shadow.mapSize.width = sun.shadow.mapSize.height = 2048;
+        const d = 15;
+        sun.shadow.camera.left = -d; sun.shadow.camera.right = d;
+        sun.shadow.camera.top = d; sun.shadow.camera.bottom = -d;
+        sun.shadow.camera.near = 1; sun.shadow.camera.far = 50;
+        sun.shadow.bias = -0.0005;
+        scene.add(sun);
+        scene.add(new THREE.PointLight(0x4466ff, 0.5)).position.set(-5, 5, 10);
+        scene.add(new THREE.PointLight(0xffaa66, 0.4)).position.set(8, 4, -8);
+        scene.add(new THREE.PointLight(0x88aaff, 0.3)).position.set(-5, 5, -10);
+        scene.add(new THREE.HemisphereLight(0x88aaff, 0x332211, 0.6));
+
+        // Ground & Grid
+        const ground = new THREE.Mesh(new THREE.CircleGeometry(30, 32), new THREE.MeshStandardMaterial({ color:0x1a1a2e, roughness:0.8, side:THREE.DoubleSide }));
+        ground.rotation.x = -Math.PI/2;
+        ground.position.y = -0.01;
+        ground.receiveShadow = true;
+        scene.add(ground);
+        const grid = new THREE.GridHelper(40, 20, 0x88aaff, 0x334466);
+        grid.position.y = 0;
+        scene.add(grid);
+
+        // GLB & IoT references
+        let houseModel = null, bedMesh = null;
+        const iotDevices = [], glbInteractives = [], glbDevices = {}, deviceMaterials = {};
+        const raycaster = new THREE.Raycaster(), mouse = new THREE.Vector2();
+
+        function updateIoTPanel() {
+            const panel = document.getElementById('device-list');
+            let html = '';
+            for (const [key, dev] of Object.entries(glbDevices)) {
+                const emoji = dev.type==='door'?'🚪':dev.type==='window'?'🪟':dev.type==='lamp'?'💡':dev.type==='lantern'?'🔦':'⚙️';
+                const label = dev.roomName || key;
+                const cls = dev.state ? 'status-on' : 'status-off';
+                const txt = dev.state ? 'ON' : 'OFF';
+                html += `<div class="device-row"><span class="device-name">${emoji} ${label}</span><span class="device-status ${cls}">${txt}</span></div>`;
+            }
+            panel.innerHTML = html;
+        }
+
+        function handleDeviceStatusUpdate(device, room, state) {
+            const key = `${device}_${room}`;
+            const dev = glbDevices[key];
+            if (!dev) return;
+            dev.state = state;
+            if (dev.type === 'lamp' || dev.type === 'lantern') {
+                if (dev.object.material) {
+                    dev.object.material.emissive.setHex(state ? 0xffaa00 : 0x000000);
+                    dev.object.material.emissiveIntensity = state ? 1.0 : 0.0;
+                }
+            } else if (dev.type === 'door') {
+                dev.targetRotation = state ? Math.PI/2 : 0;
+            } else if (dev.type === 'window') {
+                dev.isOpen = state;
+            }
+            updateIoTPanel();
+        }
+
+        function extractGLBInteractives(model) {
+            model.traverse(node => {
+                if (!node.isMesh || node.name==='bed_master') return;
+                const n = node.name.toLowerCase();
+                let type = null, room = 'unknown';
+                if (n.includes('door')||n.includes('doubledoor')) {
+                    type = 'door';
+                    if (n.includes('living')) room='living_room';
+                    else if (n.includes('master')) room='master_bedroom';
+                    else if (n.includes('kid')) room='kid_bedroom';
+                    else if (n.includes('servant')) room='servant_bedroom';
+                    else if (n.includes('toilet1')) room='toilet1';
+                    else if (n.includes('toilet2')) room='toilet2';
+                    else if (n.includes('back')) room='back';
+                    else room='terrace';
+                } else if (n.includes('window')) {
+                    type = 'window';
+                    if (n.includes('living')) room='living_room';
+                    else if (n.includes('master')) room='master_bedroom';
+                    else if (n.includes('kid')) room='kid_bedroom';
+                    else if (n.includes('servant')) room='servant_bedroom';
+                    else if (n.includes('toilet1')) room='toilet1';
+                    else if (n.includes('toilet2')) room='toilet2';
+                    else if (n.includes('kitchen')) room='kitchen';
+                    else room='terrace';
+                } else if (n.includes('lamp')) {
+                    type = 'lamp';
+                    if (n.includes('living')) room='living_room';
+                    else if (n.includes('master')) room='master_bedroom';
+                    else if (n.includes('kid')) room='kid_bedroom';
+                    else if (n.includes('servant')) room='servant_bedroom';
+                    else if (n.includes('toilet1')) room='toilet1';
+                    else if (n.includes('toilet2')) room='toilet2';
+                    else if (n.includes('kitchen')) room='kitchen';
+                } else if (n.includes('lantern')) {
+                    type = 'lantern'; room='terrace';
+                }
+                if (type) {
+                    const key = `${type}_${room}`;
+                    glbDevices[key] = {
+                        object: node, type, state: false,
+                        roomName: room.replace(/_/g,' '),
+                        isOpen: false, targetRotation: 0,
+                        originalRotation: node.rotation.clone()
+                    };
+                    glbInteractives.push(node);
+                }
+            });
+        }
+
+        function findBedAndAddIoT() {
+            houseModel.traverse(node => { if (node.isMesh && node.name==='master_bedroom') bedMesh = node; });
+            let pos = new THREE.Vector3(0,0,0);
+            if (bedMesh) { bedMesh.updateWorldMatrix(true,false); pos.copy(bedMesh.position); }
+            // AC
+            const ac = new THREE.Group();
+            const body = new THREE.Mesh(new THREE.BoxGeometry(0.8,0.25,0.2), new THREE.MeshStandardMaterial({color:0xeeeeee}));
+            body.castShadow = body.receiveShadow = true;
+            ac.add(body);
+            const ventMat = new THREE.MeshStandardMaterial({color:0x88ccff});
+            for (let i=-1; i<=1; i++) {
+                const v = new THREE.Mesh(new THREE.BoxGeometry(0.12,0.08,0.05), ventMat);
+                v.position.set(i*0.25, 0, 0.12);
+                v.castShadow = true;
+                ac.add(v);
+            }
+            ac.userData = { type:'ac', room:'master_bedroom', colorOff:0xeeeeee, colorOn:0x88ccff };
+            ac.position.set(pos.x+0.5, pos.y+1.8, pos.z-0.8);
+            scene.add(ac); iotDevices.push(ac); deviceMaterials.ac_bed = body.material;
+            glbDevices['ac_master_bedroom'] = { object:ac, type:'ac', state:false, roomName:'master bedroom' };
+            // Camera
+            const cam = new THREE.Group();
+            const cbody = new THREE.Mesh(new THREE.BoxGeometry(0.25,0.25,0.3), new THREE.MeshStandardMaterial({color:0x1a1a1a}));
+            cbody.castShadow = true; cam.add(cbody);
+            const lens = new THREE.Mesh(new THREE.SphereGeometry(0.1), new THREE.MeshStandardMaterial({color:0x111, emissive:0x220000}));
+            lens.position.z = 0.18; lens.castShadow = true; cam.add(lens);
+            const bracket = new THREE.Mesh(new THREE.BoxGeometry(0.08,0.5,0.08), new THREE.MeshStandardMaterial({color:0x444}));
+            bracket.position.y = -0.3; bracket.castShadow = true; cam.add(bracket);
+            cam.userData = { type:'camera', room:'master_bedroom', streamUrl:'http://192.168.137.79' };
+            cam.position.set(pos.x-0.6, pos.y+2.4, pos.z+0.5);
+            scene.add(cam); iotDevices.push(cam);
+            glbDevices['camera_master_bedroom'] = { object:cam, type:'camera', state:false, roomName:'master bedroom' };
+            updateIoTPanel();
+        }
+
+        // Load model
+        new GLTFLoader().load('./smarthouse.glb', gltf => {
+            houseModel = gltf.scene;
+            houseModel.traverse(n => { if (n.isMesh) { n.castShadow = n.receiveShadow = true; }});
+            const box = new THREE.Box3().setFromObject(houseModel);
+            const scale = 5.0 / box.getSize(new THREE.Vector3()).y;
+            houseModel.scale.set(scale,scale,scale);
+            houseModel.updateWorldMatrix(true,true);
+            const nb = new THREE.Box3().setFromObject(houseModel);
+            houseModel.position.x = -nb.getCenter(new THREE.Vector3()).x;
+            houseModel.position.z = -nb.getCenter(new THREE.Vector3()).z;
+            houseModel.position.y = -nb.min.y;
+            scene.add(houseModel);
+            extractGLBInteractives(houseModel);
+            findBedAndAddIoT();
+            controls.target.copy(new THREE.Box3().setFromObject(houseModel).getCenter(new THREE.Vector3()));
+            document.getElementById('status').innerHTML = '✅ Model siap.';
+            setTimeout(() => controls.autoRotate = false, 2000);
+        }, xhr => {
+            document.getElementById('status').innerHTML = `⏳ Memuat... ${Math.floor(xhr.loaded/xhr.total*100)}%`;
+        }, err => {
+            console.error(err);
+            document.getElementById('status').innerHTML = '❌ Gagal memuat model.';
+        });
+
+        // Click interaction
+        window.addEventListener('click', e => {
+            mouse.x = (e.clientX / renderer.domElement.clientWidth) * 2 - 1;
+            mouse.y = -(e.clientY / renderer.domElement.clientHeight) * 2 + 1;
+            raycaster.setFromCamera(mouse, camera);
+            const iotHit = raycaster.intersectObjects(iotDevices, true)[0];
+            if (iotHit) {
+                let ud = iotHit.object.userData;
+                if (!ud.type && iotHit.object.parent) ud = iotHit.object.parent.userData;
+                if (ud?.type === 'ac') {
+                    const dev = glbDevices['ac_master_bedroom'];
+                    if (dev) {
+                        dev.state = !dev.state;
+                        const mat = deviceMaterials.ac_bed;
+                        if (mat) mat.color.setHex(dev.state ? ud.colorOn : ud.colorOff);
+                        sendCommand('ac', 'master_bedroom', { action: dev.state ? 'on' : 'off' });
+                    }
+                    updateIoTPanel();
+                    return;
+                } else if (ud?.type === 'camera') {
+                    window.open(ud.streamUrl, '_blank', 'width=800,height=600');
+                    return;
+                }
+            }
+            const glbHit = raycaster.intersectObjects(glbInteractives)[0];
+            if (glbHit) {
+                for (const [key, dev] of Object.entries(glbDevices)) {
+                    if (dev.object === glbHit.object) {
+                        const [type, room] = key.split('_');
+                        if (type === 'door') {
+                            dev.state = !dev.state;
+                            dev.targetRotation = dev.state ? Math.PI/2 : 0;
+                            sendCommand('door', room, { state: dev.state ? 'on' : 'off' });
+                        } else if (type === 'window') {
+                            dev.state = !dev.state;
+                            dev.isOpen = dev.state;
+                            // no sendCommand for window
+                        } else if (type === 'lamp' || type === 'lantern') {
+                            dev.state = !dev.state;
+                            if (dev.object.material) {
+                                dev.object.material.emissive.setHex(dev.state ? 0xffaa00 : 0x000000);
+                                dev.object.material.emissiveIntensity = dev.state ? 1.0 : 0.0;
+                            }
+                            sendCommand(type, room, { state: dev.state ? 'on' : 'off' });
+                        }
+                        updateIoTPanel();
+                        break;
+                    }
+                }
+            }
+        });
+
+        // Animation loop
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            for (let dev of Object.values(glbDevices)) {
+                if (dev.type === 'door' && dev.object) {
+                    const diff = dev.targetRotation - dev.object.rotation.y;
+                    if (Math.abs(diff) > 0.01) dev.object.rotation.y += diff * 0.1;
+                    else dev.object.rotation.y = dev.targetRotation;
+                } else if (dev.type === 'window' && dev.object && dev.isOpen !== undefined) {
+                    const target = dev.isOpen ? 0.3 : 0;
+                    dev.object.position.y += (target - dev.object.position.y) * 0.1;
+                }
+            }
+            renderer.render(scene, camera);
+        }
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = innerWidth / innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(innerWidth, innerHeight);
+        });
+
+        // UI controls
+        document.getElementById('toggle-gate').addEventListener('click', () => {
+            const isOpen = document.getElementById('gate-status').textContent === 'Terbuka';
+            sendCommand('door', 'gate', { action: isOpen ? 'close' : 'open' });
+        });
+        const slider = document.getElementById('ac-temp-slider');
+        const tempSpan = document.getElementById('ac-temp-display');
+        slider.addEventListener('input', e => tempSpan.textContent = e.target.value + '°C');
+        slider.addEventListener('change', e => {
+            const temp = parseInt(e.target.value);
+            tempSpan.textContent = temp + '°C';
+            sendCommand('ac', 'master_bedroom', { action: 'on', temp, mode: 'cool', fan: 'auto' });
+        });
+
+        // Start
+        connectWebSocket();
+        updateIoTPanel();
+    </script>
+</body>
+</html>
